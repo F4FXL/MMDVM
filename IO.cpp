@@ -1,5 +1,5 @@
 /*
- *   Copyright (C) 2015,2016,2017,2018 by Jonathan Naylor G4KLX
+ *   Copyright (C) 2015,2016,2017,2018,2020 by Jonathan Naylor G4KLX
  *   Copyright (C) 2015 by Jim Mclaughlin KI6ZUM
  *   Copyright (C) 2016 by Colin Durbridge G4EML
  *
@@ -80,6 +80,8 @@ m_ysfTXLevel(128 * 128),
 m_p25TXLevel(128 * 128),
 m_nxdnTXLevel(128 * 128),
 m_pocsagTXLevel(128 * 128),
+m_fmRXLevel(128 * 128),
+m_fmTXLevel(128 * 128),
 m_rxDCOffset(DC_OFFSET),
 m_txDCOffset(DC_OFFSET),
 m_ledCount(0U),
@@ -144,6 +146,7 @@ void CIO::selfTest()
     setP25Int(ledValue);
     setNXDNInt(ledValue);
     setPOCSAGInt(ledValue);
+    setFMInt(ledValue);
 #endif
     delayInt(250);
   }
@@ -155,105 +158,56 @@ void CIO::selfTest()
   setP25Int(false);
   setNXDNInt(false);
   setPOCSAGInt(false);
+  setFMInt(false);
 
   delayInt(250);
-
-  setDStarInt(true);
   setDMRInt(true);
-  setYSFInt(false);
-  setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
 
   delayInt(250);
-
-  setDStarInt(true);
-  setDMRInt(true);
   setYSFInt(true);
-  setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
-  
-  delayInt(250);
 
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
+  delayInt(250);
   setP25Int(true);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
-  
-  delayInt(250);
 
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
-  setP25Int(true);
+#if !defined(USE_ALTERNATE_NXDN_LEDS)
+  delayInt(250);
   setNXDNInt(true);
-  setPOCSAGInt(false);
-  
-  delayInt(250);
+#endif
 
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
-  setP25Int(true);
-  setNXDNInt(true);
+#if !defined(USE_ALTERNATE_POCSAG_LEDS)
+  delayInt(250);
   setPOCSAGInt(true);
-  
-  delayInt(250);
+#endif
 
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
-  setP25Int(true);
-  setNXDNInt(true);
+#if !defined(USE_ALTERNATE_FM_LEDS)
+  delayInt(250);
+  setFMInt(true);
+
+  delayInt(250);
+  setFMInt(false);
+#endif
+
+#if !defined(USE_ALTERNATE_POCSAG_LEDS)
+  delayInt(250);
   setPOCSAGInt(false);
-  
-  delayInt(250);
+#endif
 
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
-  setP25Int(true);
+#if !defined(USE_ALTERNATE_NXDN_LEDS)
+  delayInt(250);
   setNXDNInt(false);
-  setPOCSAGInt(false);
+#endif
 
   delayInt(250);
-  
-  setDStarInt(true);
-  setDMRInt(true);
-  setYSFInt(true);
   setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
 
   delayInt(250);
-
-  setDStarInt(true);
-  setDMRInt(true);
   setYSFInt(false);
-  setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
 
   delayInt(250);
-  
-  setDStarInt(true);
   setDMRInt(false);
-  setYSFInt(false);
-  setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
 
   delayInt(250);
-
   setDStarInt(false);
-  setDMRInt(false);
-  setYSFInt(false);
-  setP25Int(false);
-  setNXDNInt(false);
-  setPOCSAGInt(false);
 #endif
 }
 
@@ -402,6 +356,23 @@ void CIO::process()
             dmrDMORX.samples(RRCVals, rssi, RX_BLOCK_SIZE);
         }
       }
+
+      if (m_fmEnable) {
+        q15_t FMVals[RX_BLOCK_SIZE];
+#if defined(USE_DCBLOCKER)
+        for (uint16_t i = 0U; i < RX_BLOCK_SIZE; i++) {
+          q31_t res1 = dcSamples[i] * m_fmRXLevel;
+          FMVals[i] = q15_t(__SSAT((res1 >> 15), 16));
+        }
+#else
+        for (uint16_t i = 0U; i < RX_BLOCK_SIZE; i++) {
+          q31_t res1 = samples[i] * m_fmRXLevel;
+          FMVals[i] = q15_t(__SSAT((res1 >> 15), 16));
+        }
+#endif
+        bool cos = getCOSInt();
+        fm.samples(cos, FMVals, RX_BLOCK_SIZE);
+      }
     } else if (m_modemState == STATE_DSTAR) {
       if (m_dstarEnable) {
         q15_t GMSKVals[RX_BLOCK_SIZE];
@@ -460,6 +431,21 @@ void CIO::process()
 
         nxdnRX.samples(NXDNVals, rssi, RX_BLOCK_SIZE);
       }
+    } else if (m_modemState == STATE_FM) {
+      q15_t FMVals[RX_BLOCK_SIZE];
+#if defined(USE_DCBLOCKER)
+      for (uint16_t i = 0U; i < RX_BLOCK_SIZE; i++) {
+        q31_t res1 = dcSamples[i] * m_fmRXLevel;
+        FMVals[i] = q15_t(__SSAT((res1 >> 15), 16));
+      }
+#else
+      for (uint16_t i = 0U; i < RX_BLOCK_SIZE; i++) {
+        q31_t res1 = samples[i] * m_fmRXLevel;
+        FMVals[i] = q15_t(__SSAT((res1 >> 15), 16));
+      }
+#endif
+      bool cos = getCOSInt();
+      fm.samples(cos, FMVals, RX_BLOCK_SIZE);
     } else if (m_modemState == STATE_DSTARCAL) {
       q15_t GMSKVals[RX_BLOCK_SIZE];
       ::arm_fir_fast_q15(&m_gaussianFilter, samples, GMSKVals, RX_BLOCK_SIZE);
@@ -504,6 +490,9 @@ void CIO::write(MMDVM_STATE mode, q15_t* samples, uint16_t length, const uint8_t
       break;
     case STATE_POCSAG:
       txLevel = m_pocsagTXLevel;
+      break;
+    case STATE_FM:
+      txLevel = m_fmTXLevel;
       break;
     default:
       txLevel = m_cwIdTXLevel;
@@ -553,10 +542,11 @@ void CIO::setMode()
   setP25Int(m_modemState   == STATE_P25);
   setNXDNInt(m_modemState  == STATE_NXDN);
   setPOCSAGInt(m_modemState  == STATE_POCSAG);
+  setFMInt(m_modemState == STATE_FM);
 #endif
 }
 
-void CIO::setParameters(bool rxInvert, bool txInvert, bool pttInvert, uint8_t rxLevel, uint8_t cwIdTXLevel, uint8_t dstarTXLevel, uint8_t dmrTXLevel, uint8_t ysfTXLevel, uint8_t p25TXLevel, uint8_t nxdnTXLevel, uint8_t pocsagTXLevel, int16_t txDCOffset, int16_t rxDCOffset)
+void CIO::setParameters(bool rxInvert, bool txInvert, bool pttInvert, uint8_t rxLevel, uint8_t cwIdTXLevel, uint8_t dstarTXLevel, uint8_t dmrTXLevel, uint8_t ysfTXLevel, uint8_t p25TXLevel, uint8_t nxdnTXLevel, uint8_t pocsagTXLevel, uint8_t fmRXLevel, uint8_t fmTXLevel, int16_t txDCOffset, int16_t rxDCOffset)
 {
   m_pttInvert = pttInvert;
 
@@ -568,6 +558,8 @@ void CIO::setParameters(bool rxInvert, bool txInvert, bool pttInvert, uint8_t rx
   m_p25TXLevel    = q15_t(p25TXLevel * 128);
   m_nxdnTXLevel   = q15_t(nxdnTXLevel * 128);
   m_pocsagTXLevel = q15_t(pocsagTXLevel * 128);
+  m_fmRXLevel     = q15_t(fmRXLevel * 128);
+  m_fmTXLevel     = q15_t(fmTXLevel * 128);
 
   m_rxDCOffset   = DC_OFFSET + rxDCOffset;
   m_txDCOffset   = DC_OFFSET + txDCOffset;
@@ -618,4 +610,3 @@ bool CIO::hasLockout() const
 {
   return m_lockout;
 }
-
