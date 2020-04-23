@@ -561,8 +561,7 @@ void CSerialPort::process()
         m_buffer[0U] = c;
         m_ptr = 1U;
         m_len = 0U;
-      }
-      else {
+      } else {
         m_ptr = 0U;
         m_len = 0U;
       }
