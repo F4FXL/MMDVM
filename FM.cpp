@@ -20,18 +20,7 @@
 #include "Globals.h"
 #include "FM.h"
 
-q15_t FILTER_COEFFS[] = {
-   -630,   -842,   -846,   -634,   -312,    -53,    -14,   -251,   -683,  -1113,  -1322,  -1179,   -718,   -147,    234,    172,
-   -399,  -1298,  -2124,  -2402,  -1783,   -201,   2051,   4399,   6169,   6827,   6169,   4399,   2051,   -201,  -1783,  -2402,
-  -2124,  -1298,   -399,    172,    234,   -147,   -718,  -1179,  -1322,  -1113,   -683,   -251,    -14,    -53,   -312,   -634,
-   -846,   -842,   -630};
-
-const uint16_t FILTER_COEFFS_LEN = 51U;
-
-
 CFM::CFM() :
-m_filterBuffer(NULL),
-m_filterPosition(0U),
 m_callsign(),
 m_rfAck(),
 m_ctcssRX(),
@@ -46,9 +35,11 @@ m_holdoffTimer(),
 m_kerchunkTimer(),
 m_ackMinTimer(),
 m_ackDelayTimer(),
-m_hangTimer()
+m_hangTimer(),
+m_filterStage1(  724,   1448,   724, 32768, -37895, 21352),
+m_filterStage2(32768,      0,-32768, 32768, -50339, 19052),
+m_filterStage3(32768, -65536, 32768, 32768, -64075, 31460)
 {
-  m_filterBuffer = new q15_t[FILTER_COEFFS_LEN];
 }
 
 void CFM::samples(q15_t* samples, uint8_t length)
@@ -98,7 +89,7 @@ void CFM::samples(q15_t* samples, uint8_t length)
     if (!m_callsign.isRunning() && !m_rfAck.isRunning())
       currentSample += m_timeoutTone.getAudio();
 
-    currentSample = filter(currentSample);
+    currentSample = q15_t(m_filterStage3.filter(m_filterStage2.filter(m_filterStage1.filter(currentSample))));
 
     currentSample += m_ctcssTX.getAudio();
 
@@ -123,13 +114,14 @@ uint8_t CFM::setCallsign(const char* callsign, uint8_t speed, uint16_t frequency
   m_callsignAtStart = callsignAtStart;
   m_callsignAtEnd   = callsignAtEnd;
 
-  uint16_t holdoffTime  = 0U;
+  uint16_t holdoffTime  = holdoff * 60U;
   uint16_t callsignTime = time * 60U;
-  if (holdoff > 0U)
-    holdoffTime  = callsignTime / holdoff;
 
   m_holdoffTimer.setTimeout(holdoffTime, 0U);
   m_callsignTimer.setTimeout(callsignTime, 0U);
+
+  if (holdoffTime > 0U)
+    m_holdoffTimer.start();
 
   return m_callsign.setParams(callsign, speed, frequency, highLevel, lowLevel);
 }
@@ -199,7 +191,6 @@ void CFM::stateMachine(bool validSignal, uint8_t length)
       m_modemState = STATE_IDLE;
       m_callsignTimer.stop();
       m_timeoutTimer.stop();
-      m_holdoffTimer.stop();
       m_kerchunkTimer.stop();
       m_ackMinTimer.stop();
       m_ackDelayTimer.stop();
@@ -246,7 +237,6 @@ void CFM::kerchunkState(bool validSignal)
     m_timeoutTimer.stop();
     m_ackMinTimer.stop();
     m_callsignTimer.stop();
-    m_holdoffTimer.stop();
   }
 }
 
@@ -325,7 +315,6 @@ void CFM::hangState(bool validSignal)
         sendCallsign();
 
       m_callsignTimer.stop();
-      m_holdoffTimer.stop();
     }
   }
 
@@ -393,27 +382,4 @@ void CFM::beginRelaying()
 {
   m_timeoutTimer.start();
   m_ackMinTimer.start();
-}
-
-q15_t CFM::filter(q15_t sample)
-{
-  q15_t output = 0;
-
-  m_filterBuffer[m_filterPosition] = sample;
-
-  uint8_t iTaps = 0U;
-
-  for (int8_t i = m_filterPosition; i >= 0; i--) {
-    q31_t temp = FILTER_COEFFS[iTaps++] * m_filterBuffer[i];
-    output += q15_t(__SSAT((temp >> 15), 16));
-  }
-
-  for (int8_t i = FILTER_COEFFS_LEN - 1; i >= m_filterPosition; i--) {
-    q31_t temp = FILTER_COEFFS[iTaps++] * m_filterBuffer[i];
-    output += q15_t(__SSAT((temp >> 15), 16));
-  }
-
-  m_filterPosition = (m_filterPosition + 1U) % FILTER_COEFFS_LEN;
-
-  return output;
 }
