@@ -26,6 +26,7 @@
 #include "FMTimeout.h"
 #include "FMKeyer.h"
 #include "FMTimer.h"
+#include "FMDirectForm1.h"
 
 enum FM_STATE {
   FS_LISTENING,
@@ -37,23 +38,24 @@ enum FM_STATE {
   FS_HANG
 };
 
+
+
+
 class CFM {
 public:
   CFM();
 
-  void samples(bool cos, q15_t* samples, uint8_t length);
+  void samples(q15_t* samples, uint8_t length);
 
   void process();
 
   void reset();
 
-  uint8_t setCallsign(const char* callsign, uint8_t speed, uint16_t frequency, uint8_t time, uint8_t holdoff, uint8_t level, bool callsignAtStart, bool callsignAtEnd);
+  uint8_t setCallsign(const char* callsign, uint8_t speed, uint16_t frequency, uint8_t time, uint8_t holdoff, uint8_t highLevel, uint8_t lowLevel, bool callsignAtStart, bool callsignAtEnd);
   uint8_t setAck(const char* rfAck, uint8_t speed, uint16_t frequency, uint8_t minTime, uint16_t delay, uint8_t level);
   uint8_t setMisc(uint16_t timeout, uint8_t timeoutLevel, uint8_t ctcssFrequency, uint8_t ctcssThreshold, uint8_t ctcssLevel, uint8_t kerchunkTime, uint8_t hangTime);
 
 private:
-  arm_fir_instance_q15 m_filter;
-  q15_t                m_filterState[230U];           // NoTaps + BlockSize - 1, 201 + 20 - 1 plus some spare
   CFMKeyer             m_callsign;
   CFMKeyer             m_rfAck;
   CFMCTCSSRX           m_ctcssRX;
@@ -69,6 +71,9 @@ private:
   CFMTimer             m_ackMinTimer;
   CFMTimer             m_ackDelayTimer;
   CFMTimer             m_hangTimer;
+  CFMDirectFormI       m_filterStage1;
+  CFMDirectFormI       m_filterStage2;
+  CFMDirectFormI       m_filterStage3;
 
   void stateMachine(bool validSignal, uint8_t length);
   void listeningState(bool validSignal);

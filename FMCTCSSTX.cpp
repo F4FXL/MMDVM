@@ -106,7 +106,7 @@ uint8_t CFMCTCSSTX::setParams(uint8_t frequency, uint8_t level)
 
   q15_t arg = 0;
   for (uint16_t i = 0U; i < m_length; i++) {
-    q31_t value = ::arm_sin_q15(arg) * q15_t(level * 128);
+    q31_t value = ::arm_sin_q15(arg) * q15_t(level * 13);
     m_values[i] = q15_t(__SSAT((value >> 15), 16));
 
     arg += entry->increment;
@@ -115,13 +115,11 @@ uint8_t CFMCTCSSTX::setParams(uint8_t frequency, uint8_t level)
   return 0U;
 }
 
-void CFMCTCSSTX::getAudio(q15_t* samples, uint8_t length)
+q15_t CFMCTCSSTX::getAudio()
 {
-  for (uint8_t i = 0U; i < length; i++) {
-    samples[i] += m_values[m_n];
-
-    m_n++;
-    if (m_n >= m_length)
-      m_n = 0U;
-  }
+  q15_t sample = m_values[m_n++];
+  if(m_n >= m_length)
+    m_n = 0U;
+  
+  return sample;
 }

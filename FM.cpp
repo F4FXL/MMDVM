@@ -20,28 +20,7 @@
 #include "Globals.h"
 #include "FM.h"
 
-q15_t FILTER_COEFFS[] = {
-     -4,     0,     1,    -2,    -9,   -15,   -16,    -11,    -2,     4,     6,     1,    -7,   -15,
-    -17,    -9,     3,    16,    21,    14,     0,    -12,   -14,    -1,    21,    43,    51,    41,
-     19,    -1,    -5,    14,    50,    85,    98,     81,    44,     9,     0,    28,    80,   130,
-    147,   120,    60,     2,   -17,    16,    88,    157,   178,   132,    39,   -52,   -90,   -49,
-     46,   140,   166,    96,   -42,  -182,  -245,   -195,   -63,    67,   106,     7,  -194,  -399,
-   -496,  -429,  -238,   -41,    26,  -106,  -396,   -697,  -843,  -743,  -444,  -121,    12,  -165,
-   -603, -1084, -1329, -1163,  -629,    -6,   320,     67,  -759, -1803, -2474, -2204,  -739,  1695,
-   4421,  6556,  7363,  6556,  4421,  1695,  -739,  -2204, -2474, -1803,  -759,    67,   320,    -6,
-   -629, -1163, -1329, -1084,  -603,  -165,    12,   -121,  -444,  -743,  -843,  -697,  -396,  -106,
-     26,   -41,  -238,  -429,  -496,  -399,  -194,      7,   106,    67,   -63,  -195,  -245,  -182,
-    -42,    96,   166,   140,    46,   -49,   -90,    -52,    39,   132,   178,   157,    88,    16,
-    -17,     2,    60,   120,   147,   130,    80,     28,     0,     9,    44,    81,    98,    85,
-     50,    14,    -5,    -1,    19,    41,    51,     43,    21,    -1,   -14,   -12,     0,    14,
-     21,    16,     3,    -9,   -17,   -15,    -7,      1,     6,     4,    -2,   -11,   -16,   -15,
-     -9,    -2,     1,     0,    -4};
-
-const uint16_t FILTER_COEFFS_LEN = 201U;
-
 CFM::CFM() :
-m_filter(),
-m_filterState(),
 m_callsign(),
 m_rfAck(),
 m_ctcssRX(),
@@ -56,45 +35,69 @@ m_holdoffTimer(),
 m_kerchunkTimer(),
 m_ackMinTimer(),
 m_ackDelayTimer(),
-m_hangTimer()
+m_hangTimer(),
+m_filterStage1(  724,   1448,   724, 32768, -37895, 21352),
+m_filterStage2(32768,      0,-32768, 32768, -50339, 19052),
+m_filterStage3(32768, -65536, 32768, 32768, -64075, 31460)
 {
-  ::memset(m_filterState, 0x00U, 230U * sizeof(q15_t));
-
-  m_filter.numTaps = FILTER_COEFFS_LEN;
-  m_filter.pState  = m_filterState;
-  m_filter.pCoeffs = FILTER_COEFFS;
 }
 
-void CFM::samples(bool cos, q15_t* samples, uint8_t length)
+void CFM::samples(q15_t* samples, uint8_t length)
 {
-  bool validCTCSS = m_ctcssRX.process(samples, length);
+  uint8_t i = 0;
+  for (; i < length; i++) {
+    q15_t currentSample = samples[i];//save to a local variable to avoid indirection on every access
 
-  stateMachine(validCTCSS && cos, length);
+    CTCSSState ctcssState = m_ctcssRX.process(currentSample);
 
-  if (m_modemState != STATE_FM)
-    return;
+    if (CTCSS_NOT_READY(ctcssState) && m_modemState != STATE_FM) {
+      //Not enough samples to determine if you have CTCSS, just carry on
+      continue;
+    } else if (CTCSS_READY(ctcssState) && m_modemState != STATE_FM) {
+      //we had enough samples for CTCSS and we are in some other mode than FM
+      bool validCTCSS = CTCSS_VALID(ctcssState);
+      stateMachine(validCTCSS, i + 1U);
+      if (m_modemState != STATE_FM)
+        continue;
+    } else if (CTCSS_READY(ctcssState) && m_modemState == STATE_FM) {
+      //We had enough samples for CTCSS and we are in FM mode, trigger the state machine
+      bool validCTCSS = CTCSS_VALID(ctcssState);
+      stateMachine(validCTCSS, i + 1U);
+      if (m_modemState != STATE_FM)
+        break;
+    } else if (CTCSS_NOT_READY(ctcssState) && m_modemState == STATE_FM && i == length - 1) {
+      //Not enough samples for CTCSS but we already are in FM, trigger the state machine
+      //but do not trigger the state machine on every single sample, save CPU!
+        bool validCTCSS = CTCSS_VALID(ctcssState);
+        stateMachine(validCTCSS, i + 1U);
+    }
+    
+    // Only let audio through when relaying audio
+    if (m_state != FS_RELAYING && m_state != FS_KERCHUNK)
+      currentSample = 0U;
 
-  // Only let audio through when relaying audio
-  if (m_state != FS_RELAYING) {
-    for (uint8_t i = 0U; i < length; i++)
-      samples[i] = 0;
+    if (!m_callsign.isRunning())
+      currentSample += m_rfAck.getHighAudio();
+    
+    if (!m_rfAck.isRunning()) {
+      if (m_state == FS_LISTENING)
+        currentSample += m_callsign.getHighAudio();
+      else
+        currentSample += m_callsign.getLowAudio();
+    }
+
+    if (!m_callsign.isRunning() && !m_rfAck.isRunning())
+      currentSample += m_timeoutTone.getAudio();
+
+    currentSample = q15_t(m_filterStage3.filter(m_filterStage2.filter(m_filterStage1.filter(currentSample))));
+
+    currentSample += m_ctcssTX.getAudio();
+
+    samples[i] = currentSample;
   }
 
-  if (!m_callsign.isRunning())
-    m_rfAck.getAudio(samples, length);
-
-  if (!m_rfAck.isRunning())
-    m_callsign.getAudio(samples, length);
-
-  if (!m_callsign.isRunning() && !m_rfAck.isRunning())
-    m_timeoutTone.getAudio(samples, length);
-
-  q15_t output[RX_BLOCK_SIZE];
-  ::arm_fir_fast_q15(&m_filter, samples, output, length);
-
-  m_ctcssTX.getAudio(output, length);
-
-  io.write(STATE_FM, output, length);
+  if (m_modemState == STATE_FM)
+    io.write(STATE_FM, samples, i);//only write the actual number of processed samples to IO
 }
 
 void CFM::process()
@@ -106,20 +109,21 @@ void CFM::reset()
   m_ctcssRX.reset();
 }
 
-uint8_t CFM::setCallsign(const char* callsign, uint8_t speed, uint16_t frequency, uint8_t time, uint8_t holdoff, uint8_t level, bool callsignAtStart, bool callsignAtEnd)
+uint8_t CFM::setCallsign(const char* callsign, uint8_t speed, uint16_t frequency, uint8_t time, uint8_t holdoff, uint8_t highLevel, uint8_t lowLevel, bool callsignAtStart, bool callsignAtEnd)
 {
   m_callsignAtStart = callsignAtStart;
   m_callsignAtEnd   = callsignAtEnd;
 
-  uint16_t holdoffTime  = 0U;
+  uint16_t holdoffTime  = holdoff * 60U;
   uint16_t callsignTime = time * 60U;
-  if (holdoff > 0U)
-    holdoffTime  = callsignTime / holdoff;
 
   m_holdoffTimer.setTimeout(holdoffTime, 0U);
   m_callsignTimer.setTimeout(callsignTime, 0U);
 
-  return m_callsign.setParams(callsign, speed, frequency, level);
+  if (holdoffTime > 0U)
+    m_holdoffTimer.start();
+
+  return m_callsign.setParams(callsign, speed, frequency, highLevel, lowLevel);
 }
 
 uint8_t CFM::setAck(const char* rfAck, uint8_t speed, uint16_t frequency, uint8_t minTime, uint16_t delay, uint8_t level)
@@ -127,7 +131,7 @@ uint8_t CFM::setAck(const char* rfAck, uint8_t speed, uint16_t frequency, uint8_
   m_ackDelayTimer.setTimeout(0U, delay);
   m_ackMinTimer.setTimeout(minTime, 0U);
 
-  return m_rfAck.setParams(rfAck, speed, frequency, level);
+  return m_rfAck.setParams(rfAck, speed, frequency, level, level);
 }
 
 uint8_t CFM::setMisc(uint16_t timeout, uint8_t timeoutLevel, uint8_t ctcssFrequency, uint8_t ctcssThreshold, uint8_t ctcssLevel, uint8_t kerchunkTime, uint8_t hangTime)
@@ -187,7 +191,6 @@ void CFM::stateMachine(bool validSignal, uint8_t length)
       m_modemState = STATE_IDLE;
       m_callsignTimer.stop();
       m_timeoutTimer.stop();
-      m_holdoffTimer.stop();
       m_kerchunkTimer.stop();
       m_ackMinTimer.stop();
       m_ackDelayTimer.stop();
@@ -198,23 +201,25 @@ void CFM::stateMachine(bool validSignal, uint8_t length)
 
 void CFM::listeningState(bool validSignal)
 {
-  if (m_kerchunkTimer.getTimeout() > 0U) {
-    DEBUG1("State to KERCHUNK");
-    m_state = FS_KERCHUNK;
-    m_kerchunkTimer.start();
-  } else {
-    DEBUG1("State to RELAYING");
-    m_state = FS_RELAYING;
-    if (m_callsignAtStart)
-      sendCallsign();
+  if (validSignal) {
+    if (m_kerchunkTimer.getTimeout() > 0U) {
+      DEBUG1("State to KERCHUNK");
+      m_state = FS_KERCHUNK;
+      m_kerchunkTimer.start();
+    } else {
+      DEBUG1("State to RELAYING");
+      m_state = FS_RELAYING;
+      if (m_callsignAtStart)
+        sendCallsign();
+    }
+
+    beginRelaying();
+
+    m_callsignTimer.start();
+
+    DEBUG1("Change to STATE_FM");
+    m_modemState = STATE_FM;
   }
-
-  beginRelaying();
-
-  m_callsignTimer.start();
-
-  DEBUG1("Change to STATE_FM");
-  m_modemState = STATE_FM;
 }
 
 void CFM::kerchunkState(bool validSignal)
@@ -232,7 +237,6 @@ void CFM::kerchunkState(bool validSignal)
     m_timeoutTimer.stop();
     m_ackMinTimer.stop();
     m_callsignTimer.stop();
-    m_holdoffTimer.stop();
   }
 }
 
@@ -311,7 +315,6 @@ void CFM::hangState(bool validSignal)
         sendCallsign();
 
       m_callsignTimer.stop();
-      m_holdoffTimer.stop();
     }
   }
 
