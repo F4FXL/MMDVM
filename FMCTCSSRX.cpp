@@ -20,10 +20,10 @@
 #include "Globals.h"
 #include "FMCTCSSRX.h"
 
-const struct CTCSS_TABLE {
+const struct RX_CTCSS_TABLE {
   uint8_t frequency;
   q63_t   coeffDivTwo;
-} CTCSS_TABLE_DATA[] = {
+} RX_CTCSS_TABLE_DATA[] = {
   { 67U, 2147153298},
   { 69U, 2147130228},
   { 71U, 2147103212},
@@ -92,9 +92,11 @@ m_result(CTS_NONE)
 
 uint8_t CFMCTCSSRX::setParams(uint8_t frequency, uint8_t threshold)
 {
+  m_coeffDivTwo = 0;
+
   for (uint8_t i = 0U; i < CTCSS_TABLE_DATA_LEN; i++) {
-    if (CTCSS_TABLE_DATA[i].frequency == frequency) {
-      m_coeffDivTwo = CTCSS_TABLE_DATA[i].coeffDivTwo;
+    if (RX_CTCSS_TABLE_DATA[i].frequency == frequency) {
+      m_coeffDivTwo = RX_CTCSS_TABLE_DATA[i].coeffDivTwo;
       break;
     }
   }
@@ -111,6 +113,15 @@ CTCSSState CFMCTCSSRX::process(q15_t sample)
 {
   m_result = m_result & (~CTS_READY);
 
+  // sample / rxLevel
+  q15_t rxLevel = io.getRxLevel();
+  q31_t sample31 = q31_t(sample) << 16;
+  if (((sample31 >> 31) & 1) == ((rxLevel >> 15) & 1))
+    sample31 += rxLevel >> 1;
+  else
+    sample31 -= rxLevel >> 1;
+  sample31 /= rxLevel;
+
   q31_t q2 = m_q1;
   m_q1 = m_q0;
 
@@ -120,7 +131,7 @@ CTCSSState CFMCTCSSRX::process(q15_t sample)
   q31_t t3 = t2 * 2;
 
   // m_q0 = m_coeffDivTwo * m_q1 * 2 - q2 + sample
-  m_q0 = t3 - q2 + q31_t(sample);
+  m_q0 = t3 - q2 + sample31;
 
   m_count++;
   if (m_count == N) {
@@ -141,7 +152,6 @@ CTCSSState CFMCTCSSRX::process(q15_t sample)
 
     // value = m_q0 * m_q0 + m_q1 * m_q1 - m_q0 * m_q1 * m_coeffDivTwo * 2
     q31_t value = t2 + t4 - t9;
-
     m_result = m_result | CTS_READY;
     if (value >= m_threshold)
       m_result = m_result | CTS_VALID;
