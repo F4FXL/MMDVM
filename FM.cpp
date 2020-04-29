@@ -36,12 +36,15 @@ m_kerchunkTimer(),
 m_ackMinTimer(),
 m_ackDelayTimer(),
 m_hangTimer(),
-m_filterStage1(  724,   1448,   724, 32768, -37895, 21352),
+m_filterStage1(  724,   1448,   724, 32768, -37895, 21352),//3rd order Cheby Filter 300 to 2700Hz, 0.2dB passband ripple, sampling rate 24kHz
 m_filterStage2(32768,      0,-32768, 32768, -50339, 19052),
 m_filterStage3(32768, -65536, 32768, 32768, -64075, 31460),
+m_preemphasis(32768,  13967, 0, 32768, -18801, 0),//75µS 24kHz sampling rate
+m_deemphasis (32768, -18801, 0, 32768,  13967, 0),//75µS 24kHz sampling rate
 m_blanking(),
 m_useCOS(true),
-m_rxBoost(1U)
+m_rfAudioBoost(1U),
+m_downsampler(1024)//Size might need adjustement
 {
 }
 
@@ -74,17 +77,21 @@ void CFM::samples(bool cos, q15_t* samples, uint8_t length)
     } else if (CTCSS_NOT_READY(ctcssState) && m_modemState == STATE_FM && i == length - 1) {
       //Not enough samples for CTCSS but we already are in FM, trigger the state machine
       //but do not trigger the state machine on every single sample, save CPU!
-        bool validCTCSS = CTCSS_VALID(ctcssState);
-        stateMachine(validCTCSS && cos, i + 1U);
+      bool validCTCSS = CTCSS_VALID(ctcssState);
+      stateMachine(validCTCSS && cos, i + 1U);
     }
-    
+
+    currentSample = m_deemphasis.filter(currentSample);
+
     // Only let audio through when relaying audio
-    if (m_state == FS_RELAYING || m_state == FS_KERCHUNK)
+    if (m_state == FS_RELAYING || m_state == FS_KERCHUNK) {    
+      m_downsampler.addSample(currentSample);
       currentSample = m_blanking.process(currentSample);
+    }
     else
       currentSample = 0U;
 
-    currentSample *= m_rxBoost;
+    currentSample *= m_rfAudioBoost;
 
     if (!m_callsign.isRunning())
       currentSample += m_rfAck.getHighAudio();
@@ -99,7 +106,9 @@ void CFM::samples(bool cos, q15_t* samples, uint8_t length)
     if (!m_callsign.isRunning() && !m_rfAck.isRunning())
       currentSample += m_timeoutTone.getAudio();
 
-    currentSample = q15_t(m_filterStage3.filter(m_filterStage2.filter(m_filterStage1.filter(currentSample))));
+    currentSample = m_filterStage3.filter(m_filterStage2.filter(m_filterStage1.filter(currentSample)));
+
+    currentSample = m_preemphasis.filter(currentSample);
 
     currentSample += m_ctcssTX.getAudio();
 
@@ -144,10 +153,10 @@ uint8_t CFM::setAck(const char* rfAck, uint8_t speed, uint16_t frequency, uint8_
   return m_rfAck.setParams(rfAck, speed, frequency, level, level);
 }
 
-uint8_t CFM::setMisc(uint16_t timeout, uint8_t timeoutLevel, uint8_t ctcssFrequency, uint8_t ctcssThreshold, uint8_t ctcssLevel, uint8_t kerchunkTime, uint8_t hangTime, bool useCOS, uint8_t rxBoost, uint8_t maxDev, uint8_t rxLevel)
+uint8_t CFM::setMisc(uint16_t timeout, uint8_t timeoutLevel, uint8_t ctcssFrequency, uint8_t ctcssThreshold, uint8_t ctcssLevel, uint8_t kerchunkTime, uint8_t hangTime, bool useCOS, uint8_t rfAudioBoost, uint8_t maxDev, uint8_t rxLevel)
 {
-  m_useCOS  = useCOS;
-  m_rxBoost = q15_t(rxBoost);
+  m_useCOS       = useCOS;
+  m_rfAudioBoost = q15_t(rfAudioBoost);
 
   m_timeoutTimer.setTimeout(timeout, 0U);
   m_kerchunkTimer.setTimeout(kerchunkTime, 0U);

@@ -101,7 +101,7 @@ const uint8_t MMDVM_DEBUG5       = 0xF5U;
 #define	HW_TYPE	"MMDVM"
 #endif
 
-#define DESCRIPTION "20200427 (D-Star/DMR/System Fusion/P25/NXDN/POCSAG/FM)"
+#define DESCRIPTION "20200428 (D-Star/DMR/System Fusion/P25/NXDN/POCSAG/FM)"
 
 #if defined(GITVERSION)
 #define concat(h, a, b, c) h " " a " " b " GitID #" c ""
@@ -287,7 +287,7 @@ uint8_t CSerialPort::setConfig(const uint8_t* data, uint8_t length)
 
   MMDVM_STATE modemState = MMDVM_STATE(data[3U]);
 
-  if (modemState != STATE_IDLE && modemState != STATE_DSTAR && modemState != STATE_DMR && modemState != STATE_YSF && modemState != STATE_P25 && modemState != STATE_NXDN && modemState != STATE_POCSAG && modemState != STATE_FM && modemState != STATE_DSTARCAL && modemState != STATE_DMRCAL && modemState != STATE_RSSICAL && modemState != STATE_LFCAL && modemState != STATE_DMRCAL1K && modemState != STATE_P25CAL1K && modemState != STATE_DMRDMO1K && modemState != STATE_NXDNCAL1K && modemState != STATE_POCSAGCAL)
+  if (modemState != STATE_IDLE && modemState != STATE_DSTAR && modemState != STATE_DMR && modemState != STATE_YSF && modemState != STATE_P25 && modemState != STATE_NXDN && modemState != STATE_POCSAG && modemState != STATE_FM && modemState != STATE_DSTARCAL && modemState != STATE_DMRCAL && modemState != STATE_RSSICAL && modemState != STATE_LFCAL && modemState != STATE_DMRCAL1K && modemState != STATE_P25CAL1K && modemState != STATE_DMRDMO1K && modemState != STATE_NXDNCAL1K && modemState != STATE_POCSAGCAL && modemState != STATE_FMCAL10K && modemState != STATE_FMCAL12K && modemState != STATE_FMCAL15K && modemState != STATE_FMCAL20K && modemState != STATE_FMCAL25K && modemState != STATE_FMCAL30K)
     return 4U;
   if (modemState == STATE_DSTAR && !dstarEnable)
     return 4U;
@@ -423,11 +423,11 @@ uint8_t CSerialPort::setFMParams3(const uint8_t* data, uint8_t length)
 
   bool     useCOS         = (data[7U] & 0x01U) == 0x01U;
 
-  uint8_t  rxBoost        = data[8U];
+  uint8_t  rfAudioBoost   = data[8U];
   uint8_t  maxDev         = data[9U];
   uint8_t  rxLevel        = data[10U];
 
-  return fm.setMisc(timeout, timeoutLevel, ctcssFrequency, ctcssThreshold, ctcssLevel, kerchunkTime, hangTime, useCOS, rxBoost, maxDev, rxLevel);
+  return fm.setMisc(timeout, timeoutLevel, ctcssFrequency, ctcssThreshold, ctcssLevel, kerchunkTime, hangTime, useCOS, rfAudioBoost, maxDev, rxLevel);
 }
 
 uint8_t CSerialPort::setMode(const uint8_t* data, uint8_t length)
@@ -440,7 +440,7 @@ uint8_t CSerialPort::setMode(const uint8_t* data, uint8_t length)
   if (modemState == m_modemState)
     return 0U;
 
-  if (modemState != STATE_IDLE && modemState != STATE_DSTAR && modemState != STATE_DMR && modemState != STATE_YSF && modemState != STATE_P25 && modemState != STATE_NXDN && modemState != STATE_POCSAG && modemState != STATE_FM && modemState != STATE_DSTARCAL && modemState != STATE_DMRCAL && modemState != STATE_RSSICAL && modemState != STATE_LFCAL && modemState != STATE_DMRCAL1K && modemState != STATE_P25CAL1K && modemState != STATE_DMRDMO1K && modemState != STATE_NXDNCAL1K && modemState != STATE_POCSAGCAL)
+  if (modemState != STATE_IDLE && modemState != STATE_DSTAR && modemState != STATE_DMR && modemState != STATE_YSF && modemState != STATE_P25 && modemState != STATE_NXDN && modemState != STATE_POCSAG && modemState != STATE_FM && modemState != STATE_DSTARCAL && modemState != STATE_DMRCAL && modemState != STATE_RSSICAL && modemState != STATE_LFCAL && modemState != STATE_DMRCAL1K && modemState != STATE_P25CAL1K && modemState != STATE_DMRDMO1K && modemState != STATE_NXDNCAL1K && modemState != STATE_POCSAGCAL && modemState != STATE_FMCAL10K  && modemState != STATE_FMCAL12K && modemState != STATE_FMCAL15K && modemState != STATE_FMCAL20K && modemState != STATE_FMCAL25K && modemState != STATE_FMCAL30K)
     return 4U;
   if (modemState == STATE_DSTAR && !m_dstarEnable)
     return 4U;
@@ -498,8 +498,23 @@ void CSerialPort::setMode(MMDVM_STATE modemState)
     case STATE_LFCAL:
       DEBUG1("Mode set to 80 Hz Calibrate");
       break;
-    case STATE_DMRCAL1K:
-      DEBUG1("Mode set to DMR BS 1031 Hz Calibrate");
+    case STATE_FMCAL10K:
+      DEBUG1("Mode set to FM 10Khz Calibrate");
+      break;
+    case STATE_FMCAL12K:
+      DEBUG1("Mode set to FM 12.5Khz Calibrate");
+      break;
+    case STATE_FMCAL15K:
+      DEBUG1("Mode set to FM 15Khz Calibrate");
+      break;
+    case STATE_FMCAL20K:
+      DEBUG1("Mode set to FM 20Khz Calibrate");
+      break;
+    case STATE_FMCAL25K:
+      DEBUG1("Mode set to FM 10Khz Calibrate");
+      break;
+    case STATE_FMCAL30K:
+      DEBUG1("Mode set to FM 30Khz Calibrate");
       break;
     case STATE_P25CAL1K:
       DEBUG1("Mode set to P25 1011 Hz Calibrate");
@@ -647,6 +662,8 @@ void CSerialPort::process()
               err = calDStarTX.write(m_buffer + 3U, m_len - 3U);
             if (m_modemState == STATE_DMRCAL || m_modemState == STATE_LFCAL || m_modemState == STATE_DMRCAL1K || m_modemState == STATE_DMRDMO1K)
               err = calDMR.write(m_buffer + 3U, m_len - 3U);
+            if (m_modemState == STATE_FMCAL10K || m_modemState == STATE_FMCAL12K || m_modemState == STATE_FMCAL15K || m_modemState == STATE_FMCAL20K || m_modemState == STATE_FMCAL25K || m_modemState == STATE_FMCAL30K)
+              err = calFM.write(m_buffer + 3U, m_len - 3U);
             if (m_modemState == STATE_P25CAL1K)
               err = calP25.write(m_buffer + 3U, m_len - 3U);
             if (m_modemState == STATE_NXDNCAL1K)
