@@ -25,3 +25,11 @@ print(ataps)
 
 z,p,k = signal.tf2zpk(btaps, ataps)
 print(20*math.log10(k))
+
+f,h = signal.freqz(btaps,ataps, fs=fs)
+pl.plot(f,20*np.log10(np.abs(h)))
+pl.xlabel('frequency/Hz');
+pl.ylabel('gain/dB');
+pl.ylim(top=1,bottom=-20);
+pl.xlim(left=0, right=2700);
+pl.show()
