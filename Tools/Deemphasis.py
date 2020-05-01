@@ -5,6 +5,7 @@ import math
 
 fs = 48000
 tau = 750e-6
+f2 = 3000
 
 w_p = 1/tau
 w_pp = math.tan (w_p / (fs * 2)) # prewarped analog freq
@@ -25,6 +26,11 @@ print(ataps)
 
 z,p,k = signal.tf2zpk(btaps, ataps)
 print(20*math.log10(k))
+
+f,h = signal.freqz(btaps, ataps, worN=[f2], fs=fs)
+g = 20*np.log10(np.abs(h))
+print(g)
+
 
 f,h = signal.freqz(btaps,ataps, fs=fs)
 pl.plot(f,20*np.log10(np.abs(h)))
