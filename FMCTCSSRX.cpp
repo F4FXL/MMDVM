@@ -93,7 +93,7 @@ m_rxLevelInverse(1)
 
 uint8_t CFMCTCSSRX::setParams(uint8_t frequency, uint8_t threshold, uint8_t level)
 {
-  m_rxLevelInverse = 511 / q15_t(level);
+  m_rxLevelInverse = q15Division(65535, q15_t(level * 128));
 
   m_coeffDivTwo = 0;
 
@@ -112,11 +112,11 @@ uint8_t CFMCTCSSRX::setParams(uint8_t frequency, uint8_t threshold, uint8_t leve
   return 0U;
 }
 
-CTCSSState CFMCTCSSRX::process(q15_t sample)
+uint8_t CFMCTCSSRX::process(q15_t sample)
 {
   q31_t sample31 = q31_t(sample) * m_rxLevelInverse;
 
-  m_result = m_result & (~CTS_READY); 
+  m_result &= ~CTS_READY;
 
   q31_t q2 = m_q1;
   m_q1 = m_q0;
@@ -150,13 +150,13 @@ CTCSSState CFMCTCSSRX::process(q15_t sample)
     q31_t value = t2 + t4 - t9;
 
     bool previousCTCSSValid = CTCSS_VALID(m_result);
-    m_result = m_result | CTS_READY;
+    m_result |= CTS_READY;
     if (value >= m_threshold)
-      m_result = m_result | CTS_VALID;
+      m_result |= CTS_VALID;
     else
-      m_result = m_result & ~CTS_VALID;
+      m_result &= ~CTS_VALID;
 
-    if(previousCTCSSValid != CTCSS_VALID(m_result))
+    if (previousCTCSSValid != CTCSS_VALID(m_result))
       DEBUG4("CTCSS Value / Threshold / Valid", value, m_threshold, CTCSS_VALID(m_result));
 
     m_count = 0U;
@@ -167,15 +167,23 @@ CTCSSState CFMCTCSSRX::process(q15_t sample)
   return m_result;
 }
 
-CTCSSState CFMCTCSSRX::getState()
-{
-  return m_result;
-}
-
 void CFMCTCSSRX::reset()
 {
   m_q0 = 0;
   m_q1 = 0;
   m_result = CTS_NONE;
   m_count  = 0U;
+}
+
+//Taken from https://en.wikipedia.org/wiki/Q_(number_format)#Division
+q15_t CFMCTCSSRX::q15Division(q15_t a, q15_t divisor)
+{
+  q31_t a31 = q31_t(a) << 16;
+
+  if (((a >> 31) & 1) == ((divisor >> 15) & 1))
+    a31 += divisor >> 1;
+  else
+    a31 -= divisor >> 1;
+
+  return a31 / divisor;
 }
