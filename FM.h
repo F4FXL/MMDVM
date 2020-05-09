@@ -27,6 +27,7 @@
 #include "FMTimeout.h"
 #include "FMKeyer.h"
 #include "FMTimer.h"
+#include "FMRB.h"
 #include "FMDirectForm1.h"
 #include "FMDownsampler.h"
 
@@ -47,7 +48,7 @@ class CFM {
 public:
   CFM();
 
-  void samples(bool cos, q15_t* samples, uint8_t length);
+  void samples(bool cos, const q15_t* samples, uint8_t length);
 
   void process();
 
@@ -77,13 +78,13 @@ private:
   CFMDirectFormI       m_filterStage1;
   CFMDirectFormI       m_filterStage2;
   CFMDirectFormI       m_filterStage3;
-  CFMDirectFormI       m_preemphasis;
-  CFMDirectFormI       m_deemphasis;
   CFMBlanking          m_blanking;
   bool                 m_useCOS;
   bool                 m_cosInvert;
   q15_t                m_rfAudioBoost;
   CFMDownsampler       m_downsampler;
+  q15_t                m_rxLevel;
+  CFMRB                m_outputRB;
 
   void stateMachine(bool validSignal);
   void listeningState(bool validSignal);
@@ -98,6 +99,7 @@ private:
 
   void sendCallsign();
   void beginRelaying();
+  void insertSilence(uint16_t ms);
 };
 
 #endif
