@@ -1,5 +1,5 @@
 /*
- *   Copyright (C) 2015,2016,2017,2018 by Jonathan Naylor G4KLX
+ *   Copyright (C) 2015,2016,2017,2018,2020 by Jonathan Naylor G4KLX
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 
 #include "Config.h"
 #include "Globals.h"
-#include "SerialRB.h"
+#include "RingBuffer.h"
 
 
 class CSerialPort {
@@ -50,6 +50,9 @@ public:
   void writeNXDNData(const uint8_t* data, uint8_t length);
   void writeNXDNLost();
 
+  void writeFMData(const uint8_t* data, uint8_t length);
+  void writeFMStatus(uint8_t status);
+
   void writeCalData(const uint8_t* data, uint8_t length);
   void writeRSSIData(const uint8_t* data, uint8_t length);
 
@@ -64,7 +67,7 @@ private:
   uint8_t   m_ptr;
   uint8_t   m_len;
   bool      m_debug;
-  CSerialRB m_repeat;
+  CRingBuffer<uint8_t> m_repeat;
 
   void    sendACK();
   void    sendNAK(uint8_t err);
@@ -76,6 +79,7 @@ private:
   uint8_t setFMParams1(const uint8_t* data, uint8_t length);
   uint8_t setFMParams2(const uint8_t* data, uint8_t length);
   uint8_t setFMParams3(const uint8_t* data, uint8_t length);
+  uint8_t setFMParams4(const uint8_t* data, uint8_t length);
 
   // Hardware versions
   void    beginInt(uint8_t n, int speed);

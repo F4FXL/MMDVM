@@ -68,6 +68,9 @@ const uint8_t MMDVM_POCSAG_DATA  = 0x50U;
 const uint8_t MMDVM_FM_PARAMS1   = 0x60U;
 const uint8_t MMDVM_FM_PARAMS2   = 0x61U;
 const uint8_t MMDVM_FM_PARAMS3   = 0x62U;
+const uint8_t MMDVM_FM_PARAMS4   = 0x63U;
+const uint8_t MMDVM_FM_DATA      = 0x65U;
+const uint8_t MMDVM_FM_STATUS    = 0x66U;
 
 const uint8_t MMDVM_ACK          = 0x70U;
 const uint8_t MMDVM_NAK          = 0x7FU;
@@ -95,13 +98,15 @@ const uint8_t MMDVM_DEBUG5       = 0xF5U;
 #define TCXO "NO TCXO"
 #endif
 
-#if defined(STM32F4_RPT_HAT_TGO)
+#if defined(DRCC_DVM_NQF)
+#define	HW_TYPE	"MMDVM DRCC_DVM_NQF"
+#elif defined(STM32F4_RPT_HAT_TGO)
 #define	HW_TYPE	"MMDVM RPT_HAT_TGO"
 #else
 #define	HW_TYPE	"MMDVM"
 #endif
 
-#define DESCRIPTION "20200508 (D-Star/DMR/System Fusion/P25/NXDN/POCSAG/FM)"
+#define DESCRIPTION "20200512 (D-Star/DMR/System Fusion/P25/NXDN/POCSAG/FM)"
 
 #if defined(GITVERSION)
 #define concat(h, a, b, c) h " " a " " b " GitID #" c ""
@@ -156,7 +161,7 @@ void CSerialPort::getStatus()
 
   // Send all sorts of interesting internal values
   reply[0U]  = MMDVM_FRAME_START;
-  reply[1U]  = 13U;
+  reply[1U]  = 14U;
   reply[2U]  = MMDVM_GET_STATUS;
 
   reply[3U]  = 0x00U;
@@ -238,7 +243,12 @@ void CSerialPort::getStatus()
   else
     reply[12U] = 0U;
 
-  writeInt(1U, reply, 13);
+  if (m_fmEnable)
+    reply[13U] = fm.getSpace();
+  else
+    reply[13U] = 0U;
+
+  writeInt(1U, reply, 14);
 }
 
 void CSerialPort::getVersion()
@@ -262,7 +272,7 @@ void CSerialPort::getVersion()
 
 uint8_t CSerialPort::setConfig(const uint8_t* data, uint8_t length)
 {
-  if (length < 19U)
+  if (length < 21U)
     return 4U;
 
   bool rxInvert  = (data[0U] & 0x01U) == 0x01U;
@@ -329,6 +339,10 @@ uint8_t CSerialPort::setConfig(const uint8_t* data, uint8_t length)
 
   uint8_t fmTXLevel     = data[18U];
 
+  uint8_t p25TXHang     = data[19U];
+
+  uint8_t nxdnTXHang    = data[20U];
+
   setMode(modemState);
 
   m_dstarEnable  = dstarEnable;
@@ -354,6 +368,8 @@ uint8_t CSerialPort::setConfig(const uint8_t* data, uint8_t length)
   dmrIdleRX.setColorCode(colorCode);
 
   ysfTX.setParams(ysfLoDev, ysfTXHang);
+  p25TX.setParams(p25TXHang);
+  nxdnTX.setParams(nxdnTXHang);
 
   io.setParameters(rxInvert, txInvert, pttInvert, rxLevel, cwIdTXLevel, dstarTXLevel, dmrTXLevel, ysfTXLevel, p25TXLevel, nxdnTXLevel, pocsagTXLevel, fmTXLevel, txDCOffset, rxDCOffset);
 
@@ -409,27 +425,47 @@ uint8_t CSerialPort::setFMParams2(const uint8_t* data, uint8_t length)
 
 uint8_t CSerialPort::setFMParams3(const uint8_t* data, uint8_t length)
 {
-  if (length < 11U)
+  if (length < 12U)
     return 4U;
 
   uint16_t timeout        = data[0U] * 5U;
   uint8_t  timeoutLevel   = data[1U];
 
-  uint8_t  ctcssFrequency = data[2U];
-  uint8_t  ctcssThreshold = data[3U];
-  uint8_t  ctcssLevel     = data[4U];
+  uint8_t  ctcssFrequency     = data[2U];
+  uint8_t  ctcssHighThreshold = data[3U];
+  uint8_t  ctcssLowThreshold  = data[4U];
+  uint8_t  ctcssLevel         = data[5U];
 
-  uint8_t  kerchunkTime   = data[5U];
-  uint8_t  hangTime       = data[6U];
+  uint8_t  kerchunkTime   = data[6U];
+  uint8_t  hangTime       = data[7U];
 
-  bool     useCOS         = (data[7U] & 0x01U) == 0x01U;
-  bool     cosInvert      = (data[7U] & 0x02U) == 0x02U;
+  bool     useCOS         = (data[8U] & 0x01U) == 0x01U;
+  bool     cosInvert      = (data[8U] & 0x02U) == 0x02U;
 
-  uint8_t  rfAudioBoost   = data[8U];
-  uint8_t  maxDev         = data[9U];
-  uint8_t  rxLevel        = data[10U];
+  uint8_t  rfAudioBoost   = data[9U];
+  uint8_t  maxDev         = data[10U];
+  uint8_t  rxLevel        = data[11U];
 
-  return fm.setMisc(timeout, timeoutLevel, ctcssFrequency, ctcssThreshold, ctcssLevel, kerchunkTime, hangTime, useCOS, cosInvert, rfAudioBoost, maxDev, rxLevel);
+  return fm.setMisc(timeout, timeoutLevel, ctcssFrequency, ctcssHighThreshold, ctcssLowThreshold, ctcssLevel, kerchunkTime, hangTime, useCOS, cosInvert, rfAudioBoost, maxDev, rxLevel);
+}
+
+uint8_t CSerialPort::setFMParams4(const uint8_t* data, uint8_t length)
+{
+  if (length < 4U)
+    return 4U;
+
+  uint8_t  audioBoost = data[0U];
+  uint8_t  speed      = data[1U];
+  uint16_t frequency  = data[2U] * 10U;
+  uint8_t  level      = data[3U];
+
+  char ack[50U];
+  uint8_t n = 0U;
+  for (uint8_t i = 4U; i < length; i++, n++)
+    ack[n] = data[i];
+  ack[n] = '\0';
+
+  return fm.setExt(ack, audioBoost, speed, frequency, level);
 }
 
 uint8_t CSerialPort::setMode(const uint8_t* data, uint8_t length)
@@ -659,6 +695,16 @@ void CSerialPort::process()
             }
             break;
 
+          case MMDVM_FM_PARAMS4:
+            err = setFMParams4(m_buffer + 3U, m_len - 3U);
+            if (err == 0U) {
+              sendACK();
+            } else {
+              DEBUG2("Received invalid FM params 4", err);
+              sendNAK(err);
+            }
+            break;
+
           case MMDVM_CAL_DATA:
             if (m_modemState == STATE_DSTARCAL)
               err = calDStarTX.write(m_buffer + 3U, m_len - 3U);
@@ -871,6 +917,20 @@ void CSerialPort::process()
                 setMode(STATE_POCSAG);
             } else {
               DEBUG2("Received invalid POCSAG data", err);
+              sendNAK(err);
+            }
+            break;
+
+          case MMDVM_FM_DATA:
+            if (m_fmEnable) {
+              if (m_modemState == STATE_IDLE || m_modemState == STATE_FM)
+                err = fm.writeData(m_buffer + 3U, m_len - 3U);
+            }
+            if (err == 0U) {
+              if (m_modemState == STATE_IDLE)
+                setMode(STATE_FM);
+            } else {
+              DEBUG2("Received invalid FM data", err);
               sendNAK(err);
             }
             break;
@@ -1185,6 +1245,47 @@ void CSerialPort::writeNXDNLost()
   reply[2U] = MMDVM_NXDN_LOST;
 
   writeInt(1U, reply, 3);
+}
+
+void CSerialPort::writeFMData(const uint8_t* data, uint8_t length)
+{
+  if (m_modemState != STATE_FM && m_modemState != STATE_IDLE)
+    return;
+
+  if (!m_fmEnable)
+    return;
+
+  uint8_t reply[130U];
+
+  reply[0U] = MMDVM_FRAME_START;
+  reply[1U] = 0U;
+  reply[2U] = MMDVM_FM_DATA;
+
+  uint8_t count = 3U;
+  for (uint8_t i = 0U; i < length; i++, count++)
+    reply[count] = data[i];
+
+  reply[1U] = count;
+
+  writeInt(1U, reply, count);
+}
+
+void CSerialPort::writeFMStatus(uint8_t status)
+{
+  if (m_modemState != STATE_FM && m_modemState != STATE_IDLE)
+    return;
+
+  if (!m_fmEnable)
+    return;
+
+  uint8_t reply[10U];
+
+  reply[0U] = MMDVM_FRAME_START;
+  reply[1U] = 4U;
+  reply[2U] = MMDVM_FM_STATUS;
+  reply[3U] = status;
+
+  writeInt(1U, reply, 4);
 }
 
 void CSerialPort::writeCalData(const uint8_t* data, uint8_t length)
