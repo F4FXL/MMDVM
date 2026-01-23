@@ -45,18 +45,19 @@ const unsigned int DSTAR_DATA_SYNC_LENGTH_SAMPLES = DSTAR_DATA_SYNC_LENGTH_SYMBO
 const uint8_t DSTAR_DATA_SYNC_BYTES[] = {0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8, 0x55, 0x2D, 0x16};
 
 // D-Star bit order version of 0x55 0x6E 0x0A
-const uint32_t DSTAR_FRAME_SYNC_DATA = 0x00557650U;
-const uint32_t DSTAR_FRAME_SYNC_MASK = 0x00FFFFFFU;
+const uint64_t DSTAR_FRAME_SYNC_DATA = 0x0000000000557650U;
+const uint64_t DSTAR_FRAME_SYNC_MASK = 0x0000000000FFFFFFU;
 const bool     DSTAR_FRAME_SYNC_SYMBOLS[] = {false, true, false, true, false, true, false, true, false, true, true, true, false, true, true, false, false, true, false, true, false, false, false, false};
 
 // D-Star bit order version of 0x55 0x2D 0x16
-const uint32_t DSTAR_DATA_SYNC_DATA = 0x00AAB468U;
-const uint32_t DSTAR_DATA_SYNC_MASK = 0x00FFFFFFU;
+const uint64_t DSTAR_DATA_SYNC_DATA = 0x0000000000AAB468U;
+const uint64_t DSTAR_DATA_SYNC_MASK = 0x0000000000FFFFFFU;
 const bool     DSTAR_DATA_SYNC_SYMBOLS[] = {true, false, true, false, true, false, true, false, true, false, true, true, false, true, false, false, false, true, true, false, true, false, false, false};
 
-// D-Star bit order version of 0x55 0x55 0xC8 0x7A
-const uint32_t DSTAR_END_SYNC_DATA = 0xAAAA135EU;
-const uint32_t DSTAR_END_SYNC_MASK = 0xFFFFFFFFU;
+
+// D-Star bit order version of 0x55 0x55 0x55 0x55 0xC8 0x7A
+const uint64_t DSTAR_END_SYNC_DATA = 0x0000AAAAAAAA135EU;
+const uint64_t DSTAR_END_SYNC_MASK = 0x0000FFFFFFFFFFFFU;
 const uint8_t  DSTAR_END_SYNC_BYTES[] = {0x55, 0x55, 0x55, 0x55, 0xC8, 0x7A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 const uint8_t  DSTAR_SLOW_DATA_TYPE_TEXT   = 0x40U;
