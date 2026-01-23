@@ -398,7 +398,7 @@ void CDStarRX::processHeader(q15_t sample)
 void CDStarRX::processData()
 {
   // Fuzzy matching of the end frame sequences
-  if (countBits64((m_bitBuffer[m_bitPtr] & DSTAR_END_SYNC_MASK) ^ DSTAR_END_SYNC_DATA) <= END_SYNC_ERRS) {
+  if (countBits64((m_bitBuffer[m_bitPtr] & END_SYNC_MASK) ^ END_SYNC_DATA) <= END_SYNC_ERRS) {
     DEBUG1("DStarRX: Found end sync in Data");
 
     io.setDecode(false);
@@ -507,7 +507,7 @@ void CDStarRX::writeRSSIData(unsigned char* data)
 
 bool CDStarRX::correlateFrameSync()
 {
-  if (countBits64((m_bitBuffer[m_bitPtr] & DSTAR_FRAME_SYNC_MASK) ^ DSTAR_FRAME_SYNC_DATA) <= FRAME_SYNC_ERRS) {
+  if (countBits64((m_bitBuffer[m_bitPtr] & FRAME_SYNC_MASK) ^ FRAME_SYNC_DATA) <= FRAME_SYNC_ERRS) {
     uint16_t ptr = m_dataPtr + DSTAR_DATA_LENGTH_SAMPLES - DSTAR_FRAME_SYNC_LENGTH_SAMPLES + DSTAR_RADIO_SYMBOL_LENGTH;
     if (ptr >= DSTAR_DATA_LENGTH_SAMPLES)
       ptr -= DSTAR_DATA_LENGTH_SAMPLES;
@@ -543,7 +543,7 @@ bool CDStarRX::correlateDataSync()
   if (m_rxState == DSRXS_DATA)
     maxErrs = DATA_SYNC_ERRS;
 
-  if (countBits64((m_bitBuffer[m_bitPtr] & DSTAR_DATA_SYNC_MASK) ^ DSTAR_DATA_SYNC_DATA) <= maxErrs) {
+  if (countBits64((m_bitBuffer[m_bitPtr] & DATA_SYNC_MASK) ^ DATA_SYNC_DATA) <= maxErrs) {
     uint16_t ptr = m_dataPtr + DSTAR_DATA_LENGTH_SAMPLES - DSTAR_DATA_SYNC_LENGTH_SAMPLES + DSTAR_RADIO_SYMBOL_LENGTH;
     if (ptr >= DSTAR_DATA_LENGTH_SAMPLES)
       ptr -= DSTAR_DATA_LENGTH_SAMPLES;
