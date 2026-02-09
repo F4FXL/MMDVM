@@ -29,7 +29,7 @@ const unsigned int MAX_FRAMES = 150U;
 
 const uint8_t  FRAME_SYNC_ERRS = 2U;
 const uint8_t  DATA_SYNC_ERRS = 2U;
-const uint8_t  END_SYNC_ERRS = 1U;
+const uint8_t  END_SYNC_ERRS = 4U;
 
 const uint8_t BIT_MASK_TABLE0[] = {0x7FU, 0xBFU, 0xDFU, 0xEFU, 0xF7U, 0xFBU, 0xFDU, 0xFEU};
 const uint8_t BIT_MASK_TABLE1[] = {0x80U, 0x40U, 0x20U, 0x10U, 0x08U, 0x04U, 0x02U, 0x01U};
@@ -387,8 +387,9 @@ void CDStarRX::processHeader(q15_t sample)
 void CDStarRX::processData()
 {
   // Fuzzy matching of the end frame sequences
-  if (countBits64((m_bitBuffer[m_bitPtr] & DSTAR_END_SYNC_MASK) ^ DSTAR_END_SYNC_DATA) <= END_SYNC_ERRS) {
-    DEBUG1("DStarRX: Found end sync in Data");
+  uint8_t endSyncErrCount = countBits64((m_bitBuffer[m_bitPtr] & DSTAR_END_SYNC_MASK) ^ DSTAR_END_SYNC_DATA);
+  if (endSyncErrCount <= END_SYNC_ERRS) {
+    DEBUG2("DStarRX: Found end sync in Data. Errors: ", endSyncErrCount);
 
     io.setDecode(false);
     io.setADCDetection(false);
